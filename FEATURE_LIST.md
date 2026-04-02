@@ -219,15 +219,15 @@
 - [x] 本地模型与第三方 provider 扩展
 - [x] 更完善的 observability 与调试工具
 
-## Phase 5：Python 版本的差异化亮点
+## Phase 5：Python 版本的差异化亮点 ✅
 
 目标：做出属于 Python 重构版的特色。
 
-- [ ] Notebook 友好工具链
-- [ ] 数据工程 / ETL 场景增强
-- [ ] 中国模型生态一等公民支持
-- [ ] pytest / ruff / mypy / uv 集成体验
-- [ ] 面向企业内自动化与工作流的扩展接口
+- [x] Notebook 友好工具链
+- [x] 数据工程 / ETL 场景增强
+- [x] 中国模型生态一等公民支持
+- [x] pytest / ruff / mypy / uv 集成体验
+- [x] 面向企业内自动化与工作流的扩展接口
 
 ---
 
