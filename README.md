@@ -48,6 +48,16 @@
 
 ***
 
+## ⭐ Star History
+
+<a href="https://www.star-history.com/?repos=GPT-AGI%2FClawd-Codex&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=GPT-AGI/Clawd-Codex&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=GPT-AGI/Clawd-Codex&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=GPT-AGI/Clawd-Codex&type=date&legend=top-left" />
+ </picture>
+</a>
+
 ## ✨ Features
 
 ### Multi-Provider Support
@@ -88,11 +98,6 @@ clawd config       # View settings
 | Test Coverage | ✅ 90%+     | 75+ tests |
 | Documentation | ✅ Complete | 10+ docs  |
 
-## ⭐ Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=GPT-AGI/Clawd-Codex&type=Date)](https://star-history.com/#GPT-AGI/Clawd-Codex&Date)
-
-***
 
 ## 🚀 Quick Start
 
