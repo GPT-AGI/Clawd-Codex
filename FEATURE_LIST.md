@@ -209,15 +209,15 @@
 - [x] `/doctor`
 - [x] pre/post tool use hooks
 
-## Phase 4：MCP、插件、扩展生态
+## Phase 4：MCP、插件、扩展生态 ✅
 
 目标：把项目从单体 CLI 升级为可扩展平台。
 
-- [ ] MCP client/runtime 完善
-- [ ] Python 插件系统
-- [ ] 自定义 commands / tools / hooks
-- [ ] 本地模型与第三方 provider 扩展
-- [ ] 更完善的 observability 与调试工具
+- [x] MCP client/runtime 完善
+- [x] Python 插件系统
+- [x] 自定义 commands / tools / hooks
+- [x] 本地模型与第三方 provider 扩展
+- [x] 更完善的 observability 与调试工具
 
 ## Phase 5：Python 版本的差异化亮点
 
