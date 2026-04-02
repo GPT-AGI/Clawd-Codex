@@ -107,12 +107,12 @@ class PortRuntime:
         return selected[:limit]
 
     def bootstrap_session(self, prompt: str, limit: int = 5) -> RuntimeSession:
-        context = build_port_context()
+        context = build_port_context(include_git=True, include_tree=True)
         setup_report = run_setup(trusted=True)
         setup = setup_report.setup
         history = HistoryLog()
         engine = QueryEnginePort.from_workspace()
-        history.add('context', f'python_files={context.python_file_count}, archive_available={context.archive_available}')
+        history.add('context', f'python_files={context.python_file_count}, archive_available={context.archive_available}, git_repo={context.git_status.is_repo if context.git_status else False}')
         history.add('registry', f'commands={len(PORTED_COMMANDS)}, tools={len(PORTED_TOOLS)}')
         matches = self.route_prompt(prompt, limit=limit)
         registry = build_execution_registry()
