@@ -2,21 +2,65 @@
 
 from __future__ import annotations
 
-from prompt_toolkit import PromptSession
-from prompt_toolkit.history import FileHistory
-from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
-from prompt_toolkit.styles import Style
-from prompt_toolkit.completion import WordCompleter
-from prompt_toolkit.key_binding import KeyBindings
-from rich.console import Console
-from rich.markdown import Markdown
+try:
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.history import FileHistory
+    from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+    from prompt_toolkit.styles import Style
+    from prompt_toolkit.completion import WordCompleter
+    from prompt_toolkit.key_binding import KeyBindings
+except ModuleNotFoundError:  # pragma: no cover
+    class FileHistory:  # type: ignore
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class AutoSuggestFromHistory:  # type: ignore
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class Style:  # type: ignore
+        @staticmethod
+        def from_dict(*args, **kwargs):
+            return None
+
+    class WordCompleter:  # type: ignore
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class KeyBindings:  # type: ignore
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class PromptSession:  # type: ignore
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def prompt(self, *args, **kwargs):
+            raise EOFError()
+
+try:
+    from rich.console import Console
+    from rich.markdown import Markdown
+except ModuleNotFoundError:  # pragma: no cover
+    class Console:  # type: ignore
+        def print(self, *args, **kwargs):
+            return None
+
+    class Markdown:  # type: ignore
+        def __init__(self, text: str):
+            self.text = text
 from pathlib import Path
 import sys
+import json
 
 from src.agent import Session
 from src.config import get_provider_config
 from src.providers import get_provider_class
 from src.providers.base import ChatMessage
+from src.tool_system.context import ToolContext
+from src.tool_system.defaults import build_default_registry
+from src.tool_system.protocol import ToolCall
+from src.tool_system.agent_loop import ToolEvent, run_agent_loop, summarize_tool_result, summarize_tool_use
 
 
 class ClawdREPL:
@@ -48,12 +92,16 @@ class ClawdREPL:
             self.provider.model
         )
 
+        self.tool_registry = build_default_registry()
+        self.tool_context = ToolContext(workspace_root=Path.cwd())
+        self.tool_context.ask_user = self._ask_user_questions
+
         # Prompt toolkit with tab completion
         history_file = Path.home() / ".clawd" / "history"
         history_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Command completer
-        commands = ["/help", "/exit", "/quit", "/q", "/clear", "/save", "/load", "/multiline"]
+        commands = ["/help", "/exit", "/quit", "/q", "/clear", "/save", "/load", "/multiline", "/tools", "/tool"]
         self.completer = WordCompleter(commands, ignore_case=True)
 
         # Key bindings for multiline
@@ -68,6 +116,63 @@ class ClawdREPL:
             }),
             key_bindings=self.bindings
         )
+
+    def _ask_user_questions(self, questions: list[dict]) -> dict[str, str]:
+        answers: dict[str, str] = {}
+        for q in questions:
+            question_text = str(q.get("question", "")).strip()
+            options = q.get("options") or []
+            multi = bool(q.get("multiSelect", False))
+            if not question_text or not isinstance(options, list) or len(options) < 2:
+                continue
+
+            self.console.print(f"\n[bold]{question_text}[/bold]")
+            labels: list[str] = []
+            for i, opt in enumerate(options, start=1):
+                label = str((opt or {}).get("label", "")).strip()
+                desc = str((opt or {}).get("description", "")).strip()
+                labels.append(label)
+                self.console.print(f"  {i}. {label}  [dim]{desc}[/dim]")
+            other_idx = len(labels) + 1
+            self.console.print(f"  {other_idx}. Other  [dim]Provide custom text[/dim]")
+
+            prompt = "Select (comma-separated) > " if multi else "Select > "
+            raw = self.prompt_session.prompt(prompt).strip()
+            if not raw:
+                choice_str = "1"
+            else:
+                choice_str = raw
+
+            selected: list[str] = []
+            parts = [p.strip() for p in choice_str.split(",") if p.strip()]
+            if not parts:
+                parts = ["1"]
+            for part in parts:
+                try:
+                    idx = int(part)
+                except ValueError:
+                    idx = -1
+                if idx == other_idx:
+                    free = self.prompt_session.prompt("Other > ").strip()
+                    if free:
+                        selected.append(free)
+                    continue
+                if 1 <= idx <= len(labels):
+                    selected.append(labels[idx - 1])
+            if not selected:
+                selected = [labels[0]]
+            answers[question_text] = ", ".join(selected) if multi else selected[0]
+        return answers
+
+    def _shorten_path_text(self, text: str) -> str:
+        root = str(self.tool_context.workspace_root)
+        cwd = str(self.tool_context.cwd or self.tool_context.workspace_root)
+        for base in (cwd, root):
+            prefix = base.rstrip("/") + "/"
+            if text.startswith(prefix):
+                return "./" + text[len(prefix):]
+            text = text.replace(prefix, "")
+        return text
 
     def run(self):
         """Run the REPL."""
@@ -117,6 +222,36 @@ class ClawdREPL:
         elif cmd == '/help':
             self.show_help()
 
+        elif cmd == '/tools':
+            names = [spec.name for spec in self.tool_registry.list_specs()]
+            names.sort(key=str.lower)
+            self.console.print("\n[bold]Available tools:[/bold]")
+            for name in names:
+                self.console.print(f"  - {name}")
+            self.console.print()
+
+        elif cmd.startswith('/tool'):
+            parts = command.strip().split(maxsplit=2)
+            if len(parts) < 2:
+                self.console.print("[red]Usage: /tool <name> <json-input>[/red]")
+                return
+            name = parts[1]
+            payload = {}
+            if len(parts) == 3:
+                try:
+                    payload = json.loads(parts[2])
+                except json.JSONDecodeError as e:
+                    self.console.print(f"[red]Invalid JSON input: {e}[/red]")
+                    return
+            try:
+                result = self.tool_registry.dispatch(ToolCall(name=name, input=payload), self.tool_context)
+            except Exception as e:
+                self.console.print(f"[red]Tool error: {e}[/red]")
+                return
+            self.console.print("\n[bold]Tool result:[/bold]")
+            self.console.print(json.dumps(result.output, indent=2, ensure_ascii=False))
+            self.console.print()
+
         elif cmd == '/clear':
             self.session.conversation.clear()
             self.console.print("[green]Conversation cleared.[/green]")
@@ -153,6 +288,8 @@ class ClawdREPL:
 - `/save` - Save current session
 - `/load <session-id>` - Load a previous session
 - `/multiline` - Toggle multiline input mode
+- `/tools` - List available built-in tools
+- `/tool <name> <json>` - Run a tool directly
 
 **Usage:**
 - Type your message and press Enter to chat
@@ -166,21 +303,50 @@ class ClawdREPL:
     def chat(self, user_input: str):
         """Send message to LLM and display response."""
         # Add user message
-        self.session.conversation.add_message("user", user_input)
+        self.session.conversation.add_user_message(user_input)
 
         try:
-            # Call LLM (streaming)
             self.console.print("\n[bold green]Assistant:[/bold green]")
 
-            response_text = ""
-            for chunk in self.provider.chat_stream(self.session.conversation.get_messages()):
-                response_text += chunk
-                self.console.print(chunk, end="", style="green")
+            def on_event(ev: ToolEvent) -> None:
+                if ev.kind == "tool_use":
+                    summary = summarize_tool_use(ev.tool_name, ev.tool_input or {})
+                    if isinstance(summary, str) and summary:
+                        summary = self._shorten_path_text(summary)
+                    suffix = f" [dim]({summary})[/dim]" if summary else ""
+                    self.console.print(f"[dim]•[/dim] [bold cyan]{ev.tool_name}[/bold cyan]{suffix}")
+                    return
+                if ev.kind == "tool_result":
+                    if ev.is_error:
+                        msg = ""
+                        if isinstance(ev.tool_output, dict) and isinstance(ev.tool_output.get("error"), str):
+                            msg = ev.tool_output["error"]
+                        self.console.print(f"[red]  ↳ {msg or 'Error'}[/red]")
+                        return
+                    msg = summarize_tool_result(ev.tool_name, ev.tool_output)
+                    if isinstance(msg, str):
+                        prefix = f"{ev.tool_name} · "
+                        if msg.startswith(prefix):
+                            msg = msg[len(prefix):]
+                        msg = self._shorten_path_text(msg)
+                    self.console.print(f"[dim]  ↳ {msg}[/dim]")
+                    return
+                if ev.kind == "tool_error":
+                    msg = ev.error or "Error"
+                    self.console.print(f"[red]  ↳ {msg}[/red]")
+
+            # Use agent loop with tools for any provider that supports it
+            response_text = run_agent_loop(
+                conversation=self.session.conversation,
+                provider=self.provider,
+                tool_registry=self.tool_registry,
+                tool_context=self.tool_context,
+                verbose=False,
+                on_event=on_event,
+            )
+            self.console.print(response_text, style="green")
 
             self.console.print("\n")
-
-            # Add assistant message
-            self.session.conversation.add_message("assistant", response_text)
 
         except Exception as e:
             error_str = str(e)
@@ -295,4 +461,3 @@ class ClawdREPL:
             for msg in loaded_session.conversation.messages[-5:]:  # Show last 5 messages
                 role_color = "blue" if msg.role == "user" else "green"
                 self.console.print(f"[{role_color}]{msg.role}[/{role_color}]: {msg.content[:100]}...")
-

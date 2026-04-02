@@ -194,6 +194,7 @@ class TestLoadSaveConfig(unittest.TestCase):
                 }
             }
 
+            config_path.parent.mkdir(parents=True, exist_ok=True)
             with open(config_path, 'w') as f:
                 json.dump(raw_config, f)
 

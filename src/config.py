@@ -93,6 +93,7 @@ def save_config(config: dict[str, Any]) -> None:
         config: Configuration dictionary to save
     """
     config_path = get_config_path()
+    config_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Create a copy to avoid modifying the original
     config_copy = json.loads(json.dumps(config))

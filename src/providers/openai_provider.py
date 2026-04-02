@@ -4,9 +4,24 @@ from __future__ import annotations
 
 from typing import Any, Generator, Optional
 
-from openai import OpenAI
+try:
+    from openai import OpenAI  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover
+    OpenAI = None
 
 from .base import BaseProvider, ChatResponse, MessageInput
+
+
+def _convert_to_openai_tool_schema(anthropic_tool: dict[str, Any]) -> dict[str, Any]:
+    """Convert Anthropic tool schema to OpenAI/GLM format."""
+    return {
+        "type": "function",
+        "function": {
+            "name": anthropic_tool["name"],
+            "description": anthropic_tool.get("description", ""),
+            "parameters": anthropic_tool.get("input_schema", {}),
+        },
+    }
 
 
 class OpenAIProvider(BaseProvider):
@@ -24,18 +39,32 @@ class OpenAIProvider(BaseProvider):
         """
         super().__init__(api_key, base_url, model or "gpt-4")
 
-        # Initialize client
-        client_kwargs = {"api_key": api_key}
+        self._client_kwargs = {"api_key": api_key}
         if base_url:
-            client_kwargs["base_url"] = base_url
+            self._client_kwargs["base_url"] = base_url
+        self.client = None
 
-        self.client = OpenAI(**client_kwargs)
+    def _ensure_client(self):
+        if self.client is not None:
+            return self.client
+        if OpenAI is None:  # pragma: no cover
+            raise ModuleNotFoundError(
+                "openai package is not installed. Install optional dependencies to use OpenAIProvider."
+            )
+        self.client = OpenAI(**self._client_kwargs)
+        return self.client
 
-    def chat(self, messages: list[MessageInput], **kwargs) -> ChatResponse:
+    def chat(
+        self,
+        messages: list[MessageInput],
+        tools: Optional[list[dict[str, Any]]] = None,
+        **kwargs
+    ) -> ChatResponse:
         """Synchronous chat completion.
 
         Args:
             messages: List of chat messages
+            tools: Optional list of tool schemas (Anthropic format)
             **kwargs: Additional parameters
 
         Returns:
@@ -46,18 +75,41 @@ class OpenAIProvider(BaseProvider):
         # Convert messages
         openai_messages = self._prepare_messages(messages)
 
+        # Convert tools to OpenAI format
+        extra_kwargs: dict[str, Any] = {}
+        if tools:
+            extra_kwargs["tools"] = [_convert_to_openai_tool_schema(t) for t in tools]
+
         # Make API call
-        response = self.client.chat.completions.create(
+        client = self._ensure_client()
+        response = client.chat.completions.create(
             model=model,
             messages=openai_messages,
-            **{k: v for k, v in kwargs.items() if k != "model"},
+            **extra_kwargs,
+            **{k: v for k, v in kwargs.items() if k not in ["model", "tools"]},
         )
 
         # Extract content
         choice = response.choices[0]
 
+        # Extract tool calls (OpenAI format -> Anthropic format)
+        tool_uses: Optional[list[dict[str, Any]]] = None
+        if hasattr(choice.message, "tool_calls") and choice.message.tool_calls:
+            tool_uses = []
+            for tc in choice.message.tool_calls:
+                import json
+                try:
+                    args = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                except Exception:
+                    args = {}
+                tool_uses.append({
+                    "id": tc.id,
+                    "name": tc.function.name,
+                    "input": args,
+                })
+
         return ChatResponse(
-            content=choice.message.content,
+            content=choice.message.content or "",
             model=response.model,
             usage={
                 "input_tokens": response.usage.prompt_tokens,
@@ -65,15 +117,20 @@ class OpenAIProvider(BaseProvider):
                 "total_tokens": response.usage.total_tokens,
             },
             finish_reason=choice.finish_reason,
+            tool_uses=tool_uses,
         )
 
     def chat_stream(
-        self, messages: list[MessageInput], **kwargs
+        self,
+        messages: list[MessageInput],
+        tools: Optional[list[dict[str, Any]]] = None,
+        **kwargs
     ) -> Generator[str, None, None]:
         """Streaming chat completion.
 
         Args:
             messages: List of chat messages
+            tools: Optional list of tool schemas (Anthropic format)
             **kwargs: Additional parameters
 
         Yields:
@@ -84,12 +141,19 @@ class OpenAIProvider(BaseProvider):
         # Convert messages
         openai_messages = self._prepare_messages(messages)
 
+        # Convert tools to OpenAI format
+        extra_kwargs: dict[str, Any] = {}
+        if tools:
+            extra_kwargs["tools"] = [_convert_to_openai_tool_schema(t) for t in tools]
+
         # Stream API call
-        stream = self.client.chat.completions.create(
+        client = self._ensure_client()
+        stream = client.chat.completions.create(
             model=model,
             messages=openai_messages,
             stream=True,
-            **{k: v for k, v in kwargs.items() if k != "model"},
+            **extra_kwargs,
+            **{k: v for k, v in kwargs.items() if k not in ["model", "tools"]},
         )
 
         for chunk in stream:

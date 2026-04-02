@@ -2,9 +2,19 @@
 
 from __future__ import annotations
 
-from typing import Generator, Optional
+from typing import Generator, Optional, Any
 
-import anthropic
+try:
+    import anthropic  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover
+    class _MissingAnthropic:
+        class Anthropic:  # type: ignore[no-redef]
+            def __init__(self, *args, **kwargs):
+                raise ModuleNotFoundError(
+                    "anthropic package is not installed. Install optional dependencies to use AnthropicProvider."
+                )
+
+    anthropic = _MissingAnthropic()
 
 from .base import BaseProvider, ChatResponse, MessageInput
 
@@ -24,18 +34,28 @@ class AnthropicProvider(BaseProvider):
         """
         super().__init__(api_key, base_url, model or "claude-sonnet-4-20250514")
 
-        # Initialize client
-        client_kwargs = {"api_key": api_key}
+        self._client_kwargs = {"api_key": api_key}
         if base_url:
-            client_kwargs["base_url"] = base_url
+            self._client_kwargs["base_url"] = base_url
+        self.client = None
 
-        self.client = anthropic.Anthropic(**client_kwargs)
+    def _ensure_client(self):
+        if self.client is not None:
+            return self.client
+        self.client = anthropic.Anthropic(**self._client_kwargs)
+        return self.client
 
-    def chat(self, messages: list[MessageInput], **kwargs) -> ChatResponse:
+    def chat(
+        self,
+        messages: list[MessageInput],
+        tools: Optional[list[dict[str, Any]]] = None,
+        **kwargs
+    ) -> ChatResponse:
         """Synchronous chat completion.
 
         Args:
             messages: List of chat messages
+            tools: Optional list of tool schemas
             **kwargs: Additional parameters (model, max_tokens, temperature, etc.)
 
         Returns:
@@ -44,37 +64,67 @@ class AnthropicProvider(BaseProvider):
         model = self._get_model(**kwargs)
         max_tokens = kwargs.get("max_tokens", 4096)
 
+        system = kwargs.pop("system", None)
+
         # Convert messages to Anthropic format
         anthropic_messages = self._prepare_messages(messages)
 
         # Make API call
-        response = self.client.messages.create(
+        client = self._ensure_client()
+        extra_kwargs: dict[str, Any] = {}
+        if tools:
+            extra_kwargs["tools"] = tools
+
+        response = client.messages.create(
             model=model,
             max_tokens=max_tokens,
             messages=anthropic_messages,
-            **{k: v for k, v in kwargs.items() if k not in ["model", "max_tokens"]},
+            **({"system": system} if system else {}),
+            **extra_kwargs,
+            **{k: v for k, v in kwargs.items() if k not in ["model", "max_tokens", "tools"]},
         )
 
-        # Extract content
-        content = response.content[0].text
+        # Extract content and tool uses
+        content_text = ""
+        tool_uses: list[dict[str, Any]] = []
+
+        for block in response.content:
+            # Handle both real Anthropic blocks and test mocks
+            block_type = getattr(block, "type", "text")
+            if block_type == "text":
+                # Get text safely for both real blocks and mocks
+                text_val = getattr(block, "text", "")
+                if text_val is not None:
+                    content_text += str(text_val)
+            elif block_type == "tool_use":
+                tool_uses.append({
+                    "id": str(getattr(block, "id", "")),
+                    "name": str(getattr(block, "name", "")),
+                    "input": dict(getattr(block, "input", {})),
+                })
 
         return ChatResponse(
-            content=content,
+            content=content_text,
             model=response.model,
             usage={
                 "input_tokens": response.usage.input_tokens,
                 "output_tokens": response.usage.output_tokens,
             },
             finish_reason=response.stop_reason,
+            tool_uses=tool_uses if tool_uses else None,
         )
 
     def chat_stream(
-        self, messages: list[MessageInput], **kwargs
+        self,
+        messages: list[MessageInput],
+        tools: Optional[list[dict[str, Any]]] = None,
+        **kwargs
     ) -> Generator[str, None, None]:
         """Streaming chat completion.
 
         Args:
             messages: List of chat messages
+            tools: Optional list of tool schemas
             **kwargs: Additional parameters
 
         Yields:
@@ -87,11 +137,17 @@ class AnthropicProvider(BaseProvider):
         anthropic_messages = self._prepare_messages(messages)
 
         # Stream API call
-        with self.client.messages.stream(
+        client = self._ensure_client()
+        extra_kwargs: dict[str, Any] = {}
+        if tools:
+            extra_kwargs["tools"] = tools
+
+        with client.messages.stream(
             model=model,
             max_tokens=max_tokens,
             messages=anthropic_messages,
-            **{k: v for k, v in kwargs.items() if k not in ["model", "max_tokens"]},
+            **extra_kwargs,
+            **{k: v for k, v in kwargs.items() if k not in ["model", "max_tokens", "tools"]},
         ) as stream:
             for text in stream.text_stream:
                 yield text

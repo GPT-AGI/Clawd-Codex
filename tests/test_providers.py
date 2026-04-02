@@ -5,12 +5,10 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.providers import (
-    AnthropicProvider,
-    GLMProvider,
-    OpenAIProvider,
-    get_provider_class,
-)
+from src.providers import get_provider_class
+from src.providers.anthropic_provider import AnthropicProvider
+from src.providers.glm_provider import GLMProvider
+from src.providers.openai_provider import OpenAIProvider
 from src.providers.base import ChatMessage, ChatResponse
 
 
@@ -78,13 +76,17 @@ class TestAnthropicProvider(unittest.TestCase):
         self.assertIn("claude-sonnet-4-20250514", models)
         self.assertIn("claude-3-5-sonnet-20241022", models)
 
-    @patch("anthropic.Anthropic")
+    @patch("src.providers.anthropic_provider.anthropic.Anthropic")
     def test_chat(self, mock_anthropic):
         """Test synchronous chat."""
         # Setup mock
         mock_client = MagicMock()
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="Hello!")]
+        # Mock text block with type and text attributes
+        mock_text_block = MagicMock()
+        mock_text_block.type = "text"
+        mock_text_block.text = "Hello!"
+        mock_response.content = [mock_text_block]
         mock_response.model = "claude-sonnet-4-20250514"
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
         mock_response.stop_reason = "end_turn"
@@ -100,12 +102,16 @@ class TestAnthropicProvider(unittest.TestCase):
         self.assertEqual(response.model, "claude-sonnet-4-20250514")
         self.assertEqual(response.finish_reason, "end_turn")
 
-    @patch("anthropic.Anthropic")
+    @patch("src.providers.anthropic_provider.anthropic.Anthropic")
     def test_chat_accepts_dict_messages(self, mock_anthropic):
         """Test synchronous chat with dict messages."""
         mock_client = MagicMock()
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="Hello!")]
+        # Mock text block with type and text attributes
+        mock_text_block = MagicMock()
+        mock_text_block.type = "text"
+        mock_text_block.text = "Hello!"
+        mock_response.content = [mock_text_block]
         mock_response.model = "claude-sonnet-4-20250514"
         mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
         mock_response.stop_reason = "end_turn"

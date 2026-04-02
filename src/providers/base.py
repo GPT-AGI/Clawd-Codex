@@ -28,6 +28,7 @@ class ChatResponse:
     usage: dict[str, Any]
     finish_reason: str
     reasoning_content: Optional[str] = None
+    tool_uses: Optional[list[dict[str, Any]]] = None
 
 
 MessageInput: TypeAlias = ChatMessage | dict[str, Any]
@@ -51,11 +52,17 @@ class BaseProvider(ABC):
         self.model = model
 
     @abstractmethod
-    def chat(self, messages: list[MessageInput], **kwargs) -> ChatResponse:
+    def chat(
+        self,
+        messages: list[MessageInput],
+        tools: Optional[list[dict[str, Any]]] = None,
+        **kwargs
+    ) -> ChatResponse:
         """Synchronous chat completion.
 
         Args:
             messages: List of chat messages
+            tools: Optional list of tool schemas
             **kwargs: Additional provider-specific parameters
 
         Returns:
@@ -65,12 +72,16 @@ class BaseProvider(ABC):
 
     @abstractmethod
     def chat_stream(
-        self, messages: list[MessageInput], **kwargs
+        self,
+        messages: list[MessageInput],
+        tools: Optional[list[dict[str, Any]]] = None,
+        **kwargs
     ) -> Generator[str, None, None]:
         """Streaming chat completion.
 
         Args:
             messages: List of chat messages
+            tools: Optional list of tool schemas
             **kwargs: Additional provider-specific parameters
 
         Yields:

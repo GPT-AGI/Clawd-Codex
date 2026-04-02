@@ -4,7 +4,11 @@ __version__ = "0.1.0"
 __author__ = "Clawd Codex Team"
 
 from .config import load_config, get_provider_config
-from .providers import BaseProvider, GLMProvider, AnthropicProvider, OpenAIProvider
+
+try:  # pragma: no cover
+    from .providers.base import BaseProvider
+except Exception:  # pragma: no cover
+    BaseProvider = None  # type: ignore[assignment]
 
 __all__ = [
     "__version__",
@@ -12,7 +16,4 @@ __all__ = [
     "load_config",
     "get_provider_config",
     "BaseProvider",
-    "GLMProvider",
-    "AnthropicProvider",
-    "OpenAIProvider",
 ]
