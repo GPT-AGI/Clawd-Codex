@@ -979,7 +979,7 @@ class ClawdREPL:
         e = err.lower()
         if name == "read" and e.startswith("file not found:"):
             p = err.split(":", 2)[-1].strip()
-            if "/.clawd/skills/" in p or "\\.clawd\\skills\\" in p or "/.claude/skills/" in p or "\\.claude\\skills\\" in p:
+            if "/.clawd/skills/" in p or r"\\.clawd\\skills\\" in p or "/.claude/skills/" in p or r"\\.claude\\skills\\" in p:
                 return True
         return False
 
