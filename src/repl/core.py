@@ -15,32 +15,32 @@ try:
     from prompt_toolkit.key_binding import KeyBindings
 except ModuleNotFoundError:  # pragma: no cover
     class FileHistory:  # type: ignore
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: list, **kwargs: dict):
             pass
 
     class AutoSuggestFromHistory:  # type: ignore
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: list, **kwargs: dict):
             pass
 
     class Style:  # type: ignore
         @staticmethod
-        def from_dict(*args, **kwargs):
+        def from_dict(*args: list, **kwargs: dict) -> None:
             return None
 
     class WordCompleter:  # type: ignore
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: list, **kwargs: dict):
             pass
     FuzzyCompleter = None  # type: ignore
 
     class KeyBindings:  # type: ignore
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: list, **kwargs: dict):
             pass
 
     class PromptSession:  # type: ignore
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: list, **kwargs: dict):
             pass
 
-        def prompt(self, *args, **kwargs):
+        def prompt(self, *args: list, **kwargs: dict) -> None:
             raise EOFError()
 
 try:
@@ -53,7 +53,7 @@ try:
     from rich.columns import Columns
 except ModuleNotFoundError:  # pragma: no cover
     class Console:  # type: ignore
-        def print(self, *args, **kwargs):
+        def print(self, *args: list, **kwargs: dict) -> None:
             return None
 
     Group = None  # type: ignore
@@ -446,7 +446,7 @@ class ClawdREPL:
         self.console.print(header)
         self.console.print()
 
-    def run(self):
+    def run(self) -> None:
         """Run the REPL."""
         self._print_startup_header()
 
@@ -482,7 +482,7 @@ class ClawdREPL:
                 self.console.print("\n[blue]Goodbye![/blue]")
                 break
 
-    def handle_command(self, command: str):
+    def handle_command(self, command: str) -> None:
         """Handle slash commands."""
         raw = command.strip()
         if raw == "/":
@@ -621,7 +621,7 @@ class ClawdREPL:
         self.chat(prompt)
         return True
 
-    def show_help(self):
+    def show_help(self) -> None:
         """Show help message."""
         help_text = """
 **Available Commands:**
@@ -717,11 +717,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
         e = err.lower()
         if name == "read" and e.startswith("file not found:"):
             p = err.split(":", 2)[-1].strip()
-            if "/.clawd/skills/" in p or "\\.clawd\\skills\\" in p or "/.claude/skills/" in p or "\\.claude\\skills\\" in p:
+            if "/.clawd/skills/" in p or r"\\.clawd\\skills\\" in p or "/.claude/skills/" in p or r"\\.claude\\skills\\" in p:
                 return True
         return False
 
-    def chat(self, user_input: str):
+    def chat(self, user_input: str) -> None:
         """Send message to LLM and display response."""
         # Add user message
         self.session.conversation.add_user_message(user_input)
@@ -872,12 +872,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
         self.console.print("[green]✓ Provider reinitialized. You can continue chatting![/green]\n")
 
-    def save_session(self):
+    def save_session(self) -> None:
         """Save current session."""
         self.session.save()
         self.console.print(f"[green]Session saved: {self.session.session_id}[/green]")
 
-    def load_session(self, session_id: str):
+    def load_session(self, session_id: str) -> None:
         """Load a previous session.
 
         Args:
