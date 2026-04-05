@@ -11,7 +11,7 @@ from rich.prompt import Prompt
 from rich.table import Table
 
 
-def main():
+def main() -> int:
     """CLI main entry point."""
     # Quick path for --version
     if len(sys.argv) == 2 and sys.argv[1] in ['--version', '-v', '-V']:
@@ -93,7 +93,7 @@ def _show_provider_defaults_table() -> None:
     console.print()
 
 
-def handle_login():
+def handle_login() -> int:
     """Interactive API configuration."""
     console = Console()
     console.print("\n[bold blue]Clawd Codex - API Configuration[/bold blue]\n")
@@ -149,7 +149,7 @@ def handle_login():
     return 0
 
 
-def show_config():
+def show_config() -> int:
     """Show current configuration."""
     console = Console()
 
@@ -185,7 +185,7 @@ def show_config():
     return 0
 
 
-def start_repl():
+def start_repl() -> int:
     """Start interactive REPL."""
     from src.config import get_default_provider
     from src.repl import ClawdREPL

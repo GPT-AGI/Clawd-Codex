@@ -109,7 +109,7 @@ class QueryEnginePort:
         matched_commands: tuple[str, ...] = (),
         matched_tools: tuple[str, ...] = (),
         denied_tools: tuple[PermissionDenial, ...] = (),
-    ):
+    ) -> None:
         yield {'type': 'message_start', 'session_id': self.session_id, 'prompt': prompt}
         if matched_commands:
             yield {'type': 'command_match', 'commands': matched_commands}

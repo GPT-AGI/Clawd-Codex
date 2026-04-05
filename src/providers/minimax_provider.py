@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover
     class _MissingAnthropic:
         class Anthropic:  # type: ignore[no-redef]
-            def __init__(self, *args, **kwargs):
+            def __init__(self, *args: list, **kwargs: dict):
                 raise ModuleNotFoundError(
                     "anthropic package is not installed. Install optional dependencies to use MinimaxProvider."
                 )
@@ -56,7 +56,7 @@ class MinimaxProvider(BaseProvider):
         self,
         messages: list[MessageInput],
         tools: Optional[list[dict[str, Any]]] = None,
-        **kwargs
+        **kwargs: dict
     ) -> ChatResponse:
         """Synchronous chat completion.
 
@@ -123,7 +123,7 @@ class MinimaxProvider(BaseProvider):
         self,
         messages: list[MessageInput],
         tools: Optional[list[dict[str, Any]]] = None,
-        **kwargs
+        **kwargs: dict
     ) -> Generator[str, None, None]:
         """Streaming chat completion.
 

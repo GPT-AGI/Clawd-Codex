@@ -56,7 +56,7 @@ class BaseProvider(ABC):
         self,
         messages: list[MessageInput],
         tools: Optional[list[dict[str, Any]]] = None,
-        **kwargs
+        **kwargs: dict
     ) -> ChatResponse:
         """Synchronous chat completion.
 
@@ -75,7 +75,7 @@ class BaseProvider(ABC):
         self,
         messages: list[MessageInput],
         tools: Optional[list[dict[str, Any]]] = None,
-        **kwargs
+        **kwargs: dict
     ) -> Generator[str, None, None]:
         """Streaming chat completion.
 
