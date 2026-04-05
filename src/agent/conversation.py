@@ -51,22 +51,22 @@ class Conversation:
     messages: list[Message] = field(default_factory=list)
     max_history: int = 100
 
-    def add_message(self, role: str, content: Union[str, list[ContentBlock]]):
+    def add_message(self, role: str, content: Union[str, list[ContentBlock]]) -> None:
         """Add a message to conversation."""
         if len(self.messages) >= self.max_history:
             self.messages.pop(0)
 
         self.messages.append(Message(role=role, content=content))
 
-    def add_user_message(self, text: str):
+    def add_user_message(self, text: str) -> None:
         """Add a plain user text message."""
         self.add_message("user", text)
 
-    def add_assistant_message(self, content: Union[str, list[ContentBlock]]):
+    def add_assistant_message(self, content: Union[str, list[ContentBlock]]) -> None:
         """Add an assistant message (text or tool use)."""
         self.add_message("assistant", content)
 
-    def add_tool_result_message(self, tool_use_id: str, content: Union[str, list[dict]], is_error: bool = False):
+    def add_tool_result_message(self, tool_use_id: str, content: Union[str, list[dict]], is_error: bool = False) -> None:
         """Add a tool result message."""
         block = ToolResultContentBlock(
             type="tool_result",
@@ -107,7 +107,7 @@ class Conversation:
                 api_messages.append({"role": msg.role, "content": content_blocks})
         return api_messages
 
-    def clear(self):
+    def clear(self) -> None:
         """Clear conversation."""
         self.messages.clear()
 

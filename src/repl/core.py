@@ -24,7 +24,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
     class Style:  # type: ignore
         @staticmethod
-        def from_dict(*args, **kwargs):
+        def from_dict(*args, **kwargs) -> None:
             return None
 
     class WordCompleter:  # type: ignore
@@ -40,7 +40,7 @@ except ModuleNotFoundError:  # pragma: no cover
         def __init__(self, *args, **kwargs):
             pass
 
-        def prompt(self, *args, **kwargs):
+        def prompt(self, *args, **kwargs) -> None:
             raise EOFError()
 
 try:
@@ -53,7 +53,7 @@ try:
     from rich.columns import Columns
 except ModuleNotFoundError:  # pragma: no cover
     class Console:  # type: ignore
-        def print(self, *args, **kwargs):
+        def print(self, *args, **kwargs) -> None:
             return None
 
     Group = None  # type: ignore
@@ -608,7 +608,7 @@ class ClawdREPL:
         self.console.print(header)
         self.console.print()
 
-    def run(self):
+    def run(self) -> None:
         """Run the REPL."""
         self._print_startup_header()
 
@@ -644,7 +644,7 @@ class ClawdREPL:
                 self.console.print("\n[blue]Goodbye![/blue]")
                 break
 
-    def handle_command(self, command: str):
+    def handle_command(self, command: str) -> None:
         """Handle slash commands."""
         raw = command.strip()
         if raw == "/":
@@ -902,7 +902,7 @@ class ClawdREPL:
         self.chat(prompt)
         return True
 
-    def show_help(self):
+    def show_help(self) -> None:
         """Show help message."""
         help_text = """
 **Available Commands:**
@@ -983,7 +983,7 @@ class ClawdREPL:
                 return True
         return False
 
-    def chat(self, user_input: str, max_turns: int = 20):
+    def chat(self, user_input: str, max_turns: int = 20) -> None:
         """Send message to LLM and display response.
 
         Args:
@@ -1153,12 +1153,12 @@ class ClawdREPL:
 
         self.console.print("[green]✓ Provider reinitialized. You can continue chatting![/green]\n")
 
-    def save_session(self):
+    def save_session(self) -> None:
         """Save current session."""
         self.session.save()
         self.console.print(f"[green]Session saved: {self.session.session_id}[/green]")
 
-    def load_session(self, session_id: str):
+    def load_session(self, session_id: str) -> None:
         """Load a previous session.
 
         Args:
