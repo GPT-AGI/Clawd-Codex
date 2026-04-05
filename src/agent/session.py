@@ -21,7 +21,7 @@ class Session:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
-    def save(self):
+    def save(self) -> None:
         """Save session to disk."""
         session_dir = Path.home() / ".clawd" / "sessions"
         session_dir.mkdir(parents=True, exist_ok=True)

@@ -63,7 +63,7 @@ class ClawdCodexCLI:
             return text
         return f"{self.colors.get(color, '')}{text}{self.colors['reset']}"
 
-    def print_banner(self):
+    def print_banner(self) -> None:
         """Print welcome banner."""
         if HAS_RICH:
             self.console.print(Panel.fit(
@@ -81,7 +81,7 @@ class ClawdCodexCLI:
 """
             print(banner)
 
-    def print_status(self):
+    def print_status(self) -> None:
         """Print current project status."""
         if HAS_RICH:
             table = Table(title="Project Status", show_header=True)
@@ -100,7 +100,7 @@ class ClawdCodexCLI:
             print(f"  Subsystems:   {self._colorize(str(len(self.manifest.top_level_modules)), 'green')}")
             print()
 
-    def print_help(self):
+    def print_help(self) -> None:
         """Print available commands."""
         commands = [
             ("help", "Show this help message"),
@@ -234,7 +234,7 @@ class ClawdCodexCLI:
 
         return True
 
-    def run(self):
+    def run(self) -> None:
         """Run the interactive CLI."""
         self.print_banner()
         self.print_status()
@@ -251,7 +251,7 @@ class ClawdCodexCLI:
                 break
 
 
-def main():
+def main() -> None:
     """Main entry point."""
     cli = ClawdCodexCLI()
     cli.run()
