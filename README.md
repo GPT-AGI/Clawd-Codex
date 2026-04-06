@@ -22,35 +22,33 @@
 
 ***
 
-## 🎯 What is This?
+## 🎯 Why Clawd Code?
 
-**Clawd Code** is a **complete Python rewrite** of Claude Code, based on the **Real TypeScript source code**.
+**Clawd Code** is a **production-oriented Python rebuild of Claude Code**, ported from the **real TypeScript architecture** and shipped as a **working CLI agent**, not just a source dump.
 
-### ⚠️ Important: This is NOT Just Source Code
-
-**Unlike the leaked TypeScript source**, Clawd Codex is a **fully functional, runnable CLI tool**:
+- **Real Agent Runtime** — tool-calling loop, streaming REPL, session history, and multi-turn execution
+- **High-Fidelity Port** — keeps the original Claude Code architecture while adapting it to idiomatic Python
+- **Built to Hack On** — readable Python codebase, rich tests, and markdown-driven skill extensibility
 
 <div align="center">
 
-| **Core Features Showcase** |
-|:---:|
-| ![Streaming Agent Experience](assets/clawd-stream.gif) |
-| **True Streaming Agent Experience** |
-| ![Skills (Slash Commands)](assets/clawd-code-skill.png) |
-| **Flexible Skill Systems** |
-| ![Bash Execution](assets/clawd-code-bash.png) |
-| *Real-time Tool Execution* |
+**Token Streaming + Tool-Aware Agent Loop**
+
+![Streaming Agent Experience](assets/clawd-stream.gif)
+
+**Programmable Skill Runtime with Tool Sandboxing**
+
+![Skills (Slash Commands)](assets/clawd-code-skill.png)
+
+**Instant Web Fetch for External Context**
+
+![Web Fetch](assets/claude-code-webfetch.png)
 
 **Real CLI • Real Usage • Real Community**
 
 </div>
 
-- ✅ **Working CLI** — Not just code, but a fully functional command-line tool you can use today
-- ✅ **Based on Real Source** — Ported from actual Claude Code TypeScript implementation
-- ✅ **Maximum Fidelity** — Preserves original architecture while optimizing
-- ✅ **Python Native** — Clean, idiomatic Python with full type hints
-- ✅ **User Friendly** — Easy setup, interactive REPL, comprehensive docs
-- ✅ **Continuously Improved** — Enhanced error handling, testing, documentation
+**A real Claude Code-style terminal workflow in Python: stream replies, call tools, fetch context, and extend behavior with skills.**
 
 **🚀 Try it now! Fork it, modify it, make it yours! Pull requests welcome!**
 
@@ -83,7 +81,7 @@
 - Built-in `/stream` toggle for live output and `/render-last` for clean Markdown re-rendering on demand
 - Designed for real terminal demos: streaming text, visible tool activity, and stable fallback behavior
 
-### Flexible Skill Systems
+### Programmable Skill Runtime
 
 ```md
 ---
@@ -456,35 +454,33 @@ If you find this useful, please **star** ⭐ the repo!
 
 ***
 
-## 🎯 这是什么？
+## 🎯 为什么是 Clawd Code？
 
-**Clawd Codex** 是 Claude Code 的**完整 Python 重写版**，基于**真实的 TypeScript 源码**。
+**Clawd Code** 是一个面向真实使用的 **Claude Code Python 重构版**：它基于**真实 TypeScript 架构**移植而来，并且交付的是一个**可运行的 CLI Agent**，而不只是源码镜像。
 
-### ⚠️ 重要：这不仅仅是源码
-
-**不同于泄露的 TypeScript 源码**，Clawd Codex 是一个**完全可用的命令行工具**：
+- **真实 Agent Runtime** — 具备工具调用循环、流式 REPL、会话历史与多轮执行能力
+- **高保真移植** — 尽可能保留 Claude Code 的原始架构，同时做符合 Python 风格的实现
+- **适合继续开发** — 代码可读、测试完善，并支持基于 Markdown 的技能扩展
 
 <div align="center">
 
-| **核心功能演示** |
-|:---:|
-| ![流式 Agent 演示](assets/clawd-stream.gif) |
-| **真实流式 Agent 体验** |
-| ![Skills（斜杠命令）](assets/clawd-code-skill.png) |
-| **Flexible Skill Systems** |
-| ![Bash 执行](assets/clawd-code-bash.png) |
-| *实时的 Bash 命令执行* |
+**Token Streaming + Tool-Aware Agent Loop**
+
+![流式 Agent 演示](assets/clawd-stream.gif)
+
+**可编程 Skill Runtime 与工具沙箱**
+
+![Skills（斜杠命令）](assets/clawd-code-skill.png)
+
+**Instant Web Fetch for External Context**
+
+![网页获取](assets/claude-code-webfetch.png)
 
 **真实的 CLI • 真实的使用 • 真实的社区**
 
 </div>
 
-- ✅ **可工作的 CLI** — 不仅仅是代码，而是你今天就能使用的完整命令行工具
-- ✅ **基于真实源码** — 从真实的 Claude Code TypeScript 实现移植而来
-- ✅ **最大程度还原** — 在优化的同时保留原始架构
-- ✅ **原生 Python** — 干净、符合 Python 习惯的代码，完整类型提示
-- ✅ **用户友好** — 简单设置、交互式 REPL、完善的文档
-- ✅ **持续改进** — 增强的错误处理、测试、文档
+**这是一个真正可跑的 Claude Code 风格 Python 终端工作流：能流式回答、调工具、抓外部上下文，并通过 skills 扩展行为。**
 
 **🚀 立即试用！Fork 它、修改它、让它成为你的！欢迎提交 Pull Request！**
 
@@ -517,7 +513,7 @@ If you find this useful, please **star** ⭐ the repo!
 - 内置 `/stream` 开关用于实时输出，`/render-last` 可按需把上一条回答重新渲染为 Markdown
 - 专门为终端演示优化：一边看回答流出，一边看到工具调用，并保留稳定回退路径
 
-### Flexible Skill Systems
+### 可编程 Skill Runtime
 
 ```md
 ---
