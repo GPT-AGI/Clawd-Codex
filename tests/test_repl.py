@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
 import tempfile
 import json
+from rich.markdown import Markdown
 
 from src.repl import ClawdREPL
 from src.agent import Session, Conversation
@@ -45,7 +46,7 @@ class TestREPL(unittest.TestCase):
             with patch('src.repl.core.Session.create') as mock_session:
                 mock_session.return_value = Mock()
 
-                with patch('src.providers.get_provider_class') as mock_provider_class:
+                with patch('src.repl.core.get_provider_class') as mock_provider_class:
                     mock_provider = Mock()
                     mock_provider.model = "glm-4.5"
                     mock_provider_class.return_value = mock_provider
@@ -53,15 +54,30 @@ class TestREPL(unittest.TestCase):
                     repl = ClawdREPL(provider_name="glm")
                     self.assertIsNotNone(repl)
                     self.assertEqual(repl.provider_name, "glm")
+                    self.assertFalse(repl.stream)
                     self.assertFalse(repl.multiline_mode)
+
+    def test_repl_initialization_with_stream_enabled(self):
+        """Test REPL can start with stream mode enabled."""
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create') as mock_session:
+                mock_session.return_value = Mock()
+
+                with patch('src.repl.core.get_provider_class') as mock_provider_class:
+                    mock_provider = Mock()
+                    mock_provider.model = "glm-4.5"
+                    mock_provider_class.return_value = mock_provider
+
+                    repl = ClawdREPL(provider_name="glm", stream=True)
+                    self.assertTrue(repl.stream)
 
     def test_startup_header_contains_logo_and_metadata(self):
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
             with patch('src.repl.core.Session.create'):
-                with patch('src.providers.get_provider_class') as mock_provider_class:
+                with patch('src.repl.core.get_provider_class') as mock_provider_class:
                     mock_provider = Mock()
                     mock_provider.model = "glm-4.5"
-                    mock_provider_class.return_value = mock_provider
+                    mock_provider_class.return_value = Mock(return_value=mock_provider)
 
                     repl = ClawdREPL(provider_name="glm")
 
@@ -87,7 +103,7 @@ class TestREPL(unittest.TestCase):
         """Test /exit command."""
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
             with patch('src.repl.core.Session.create'):
-                with patch('src.providers.get_provider_class') as mock_provider_class:
+                with patch('src.repl.core.get_provider_class') as mock_provider_class:
                     mock_provider = Mock()
                     mock_provider.model = "glm-4.5"
                     mock_provider_class.return_value = mock_provider
@@ -105,7 +121,7 @@ class TestREPL(unittest.TestCase):
                 mock_session_instance.conversation = Mock()
                 mock_session.return_value = mock_session_instance
 
-                with patch('src.providers.get_provider_class') as mock_provider_class:
+                with patch('src.repl.core.get_provider_class') as mock_provider_class:
                     mock_provider = Mock()
                     mock_provider.model = "glm-4.5"
                     mock_provider_class.return_value = mock_provider
@@ -119,7 +135,7 @@ class TestREPL(unittest.TestCase):
         """Test /multiline command."""
         with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
             with patch('src.repl.core.Session.create'):
-                with patch('src.providers.get_provider_class') as mock_provider_class:
+                with patch('src.repl.core.get_provider_class') as mock_provider_class:
                     mock_provider = Mock()
                     mock_provider.model = "glm-4.5"
                     mock_provider_class.return_value = mock_provider
@@ -136,6 +152,154 @@ class TestREPL(unittest.TestCase):
                     # Toggle back to False
                     repl.handle_command("/multiline")
                     self.assertFalse(repl.multiline_mode)
+
+    def test_handle_command_stream_toggle(self):
+        """Test /stream command toggles stream mode safely."""
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create'):
+                with patch('src.repl.core.get_provider_class') as mock_provider_class:
+                    mock_provider = Mock()
+                    mock_provider.model = "glm-4.5"
+                    mock_provider_class.return_value = mock_provider
+
+                    repl = ClawdREPL(provider_name="glm")
+                    self.assertFalse(repl.stream)
+
+                    repl.handle_command("/stream on")
+                    self.assertTrue(repl.stream)
+
+                    repl.handle_command("/stream off")
+                    self.assertFalse(repl.stream)
+
+    def test_handle_command_render_last_renders_markdown(self):
+        """Test /render-last re-renders the last assistant response."""
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create') as mock_session_factory:
+                mock_session = Mock()
+                mock_session.conversation = Conversation()
+                mock_session.conversation.add_assistant_message("## Hello\n\n- item")
+                mock_session_factory.return_value = mock_session
+
+                with patch('src.repl.core.get_provider_class') as mock_provider_class:
+                    mock_provider = Mock()
+                    mock_provider.model = "glm-4.5"
+                    mock_provider_class.return_value = mock_provider
+
+                    repl = ClawdREPL(provider_name="glm")
+                    repl.console.print = Mock()
+                    repl.handle_command("/render-last")
+
+                    self.assertTrue(any(
+                        args and isinstance(args[0], Markdown)
+                        for args, _kwargs in repl.console.print.call_args_list
+                    ))
+
+    def test_handle_command_render_last_without_message(self):
+        """Test /render-last handles empty history gracefully."""
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create') as mock_session_factory:
+                mock_session = Mock()
+                mock_session.conversation = Conversation()
+                mock_session_factory.return_value = mock_session
+
+                with patch('src.repl.core.get_provider_class') as mock_provider_class:
+                    mock_provider = Mock()
+                    mock_provider.model = "glm-4.5"
+                    mock_provider_class.return_value = mock_provider
+
+                    repl = ClawdREPL(provider_name="glm")
+                    repl.console.print = Mock()
+                    repl.handle_command("/render-last")
+
+                    self.assertTrue(any(
+                        args and "No assistant response available to render." in str(args[0])
+                        for args, _kwargs in repl.console.print.call_args_list
+                    ))
+
+    def test_chat_uses_true_api_stream_for_simple_prompt(self):
+        """Simple prompts should use provider.chat_stream when stream mode is enabled."""
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create') as mock_session_factory:
+                mock_session = Mock()
+                mock_session.conversation = Conversation()
+                mock_session_factory.return_value = mock_session
+
+                with patch('src.repl.core.get_provider_class') as mock_provider_class:
+                    mock_provider = Mock()
+                    mock_provider.model = "glm-4.5"
+                    mock_provider.chat_stream.return_value = iter(["你", "好"])
+                    mock_provider_class.return_value = Mock(return_value=mock_provider)
+
+                    repl = ClawdREPL(provider_name="glm", stream=True)
+                    repl.console.print = Mock()
+
+                    with patch('src.repl.core.run_agent_loop') as mock_agent_loop:
+                        repl.chat("你是谁")
+
+                    mock_provider.chat_stream.assert_called_once()
+                    mock_agent_loop.assert_not_called()
+                    self.assertFalse(any(
+                        args and isinstance(args[0], Markdown)
+                        for args, _kwargs in repl.console.print.call_args_list
+                    ))
+                    self.assertEqual(len(mock_session.conversation.messages), 2)
+                    self.assertEqual(mock_session.conversation.messages[1].role, "assistant")
+                    self.assertEqual(mock_session.conversation.messages[1].content, "你好")
+
+    def test_chat_stream_falls_back_to_agent_loop_for_code_task(self):
+        """Code-like prompts keep the existing agent loop path for safety."""
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create') as mock_session_factory:
+                mock_session = Mock()
+                mock_session.conversation = Conversation()
+                mock_session_factory.return_value = mock_session
+
+                with patch('src.repl.core.get_provider_class') as mock_provider_class:
+                    mock_provider = Mock()
+                    mock_provider.model = "glm-4.5"
+                    mock_provider_class.return_value = Mock(return_value=mock_provider)
+
+                    repl = ClawdREPL(provider_name="glm", stream=True)
+                    repl.console.print = Mock()
+
+                    def run_agent_loop_side_effect(*args, **kwargs):
+                        kwargs["on_text_chunk"]("**done**")
+                        return Mock(response_text="**done**", usage=None, num_turns=1)
+
+                    with patch('src.repl.core.run_agent_loop') as mock_agent_loop:
+                        mock_agent_loop.side_effect = run_agent_loop_side_effect
+                        repl.chat("请读取 README.md 并总结")
+
+                    mock_provider.chat_stream.assert_not_called()
+                    mock_agent_loop.assert_called_once()
+                    self.assertFalse(any(
+                        args and isinstance(args[0], Markdown)
+                        for args, _kwargs in repl.console.print.call_args_list
+                    ))
+
+    def test_chat_stream_falls_back_to_agent_loop_on_stream_init_failure(self):
+        """If real streaming fails before any chunk, fall back to the stable agent loop."""
+        with patch('src.config.get_config_path', return_value=self.config_dir / "config.json"):
+            with patch('src.repl.core.Session.create') as mock_session_factory:
+                mock_session = Mock()
+                mock_session.conversation = Conversation()
+                mock_session_factory.return_value = mock_session
+
+                with patch('src.repl.core.get_provider_class') as mock_provider_class:
+                    mock_provider = Mock()
+                    mock_provider.model = "glm-4.5"
+                    mock_provider.chat_stream.side_effect = RuntimeError("stream unavailable")
+                    mock_provider_class.return_value = Mock(return_value=mock_provider)
+
+                    repl = ClawdREPL(provider_name="glm", stream=True)
+                    repl.console.print = Mock()
+
+                    with patch('src.repl.core.run_agent_loop') as mock_agent_loop:
+                        mock_agent_loop.return_value = Mock(response_text="fallback", usage=None, num_turns=1)
+                        repl.chat("你好呀")
+
+                    mock_provider.chat_stream.assert_called_once()
+                    mock_agent_loop.assert_called_once()
 
     def test_handle_command_slash_shows_commands_and_skills(self):
         skills_dir = Path(self.temp_dir) / "skills"

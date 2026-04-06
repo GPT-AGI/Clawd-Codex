@@ -27,6 +27,7 @@ Examples:
   clawd --version          Show version
   clawd login              Configure API keys
   clawd config             Show current configuration
+  clawd --stream           Start REPL with live response rendering
   clawd                    Start interactive REPL
 """
     )
@@ -40,6 +41,11 @@ Examples:
         '--config',
         action='store_true',
         help='Show current configuration'
+    )
+    parser.add_argument(
+        '--stream',
+        action='store_true',
+        help='Enable live response rendering in the REPL'
     )
 
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
@@ -69,7 +75,7 @@ Examples:
         return show_config()
 
     # Default: start REPL
-    return start_repl()
+    return start_repl(stream=args.stream)
 
 
 def _show_provider_defaults_table() -> None:
@@ -185,13 +191,13 @@ def show_config():
     return 0
 
 
-def start_repl():
+def start_repl(stream: bool = False):
     """Start interactive REPL."""
     from src.config import get_default_provider
     from src.repl import ClawdREPL
 
     provider = get_default_provider()
-    repl = ClawdREPL(provider_name=provider)
+    repl = ClawdREPL(provider_name=provider, stream=stream)
     repl.run()
     return 0
 

@@ -16,7 +16,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
     anthropic = _MissingAnthropic()
 
-from .base import BaseProvider, ChatResponse, MessageInput
+from .base import BaseProvider, ChatResponse, MessageInput, TextChunkCallback
 
 
 class MinimaxProvider(BaseProvider):
@@ -51,6 +51,35 @@ class MinimaxProvider(BaseProvider):
             return self.client
         self.client = anthropic.Anthropic(**self._client_kwargs)
         return self.client
+
+    def _build_chat_response(self, response: Any) -> ChatResponse:
+        content_text = ""
+        tool_uses: list[dict[str, Any]] = []
+
+        for block in response.content:
+            block_type = getattr(block, "type", "text")
+            if block_type == "text":
+                text_val = getattr(block, "text", "")
+                if text_val is not None:
+                    content_text += str(text_val)
+            elif block_type == "tool_use":
+                tool_uses.append({
+                    "id": str(getattr(block, "id", "")),
+                    "name": str(getattr(block, "name", "")),
+                    "input": dict(getattr(block, "input", {})),
+                })
+
+        usage = getattr(response, "usage", None)
+        return ChatResponse(
+            content=content_text,
+            model=getattr(response, "model", self.model or ""),
+            usage={
+                "input_tokens": getattr(usage, "input_tokens", 0),
+                "output_tokens": getattr(usage, "output_tokens", 0),
+            },
+            finish_reason=str(getattr(response, "stop_reason", "stop")),
+            tool_uses=tool_uses if tool_uses else None,
+        )
 
     def chat(
         self,
@@ -91,33 +120,7 @@ class MinimaxProvider(BaseProvider):
             **{k: v for k, v in kwargs.items() if k not in ["model", "max_tokens", "tools"]},
         )
 
-        # Extract content and tool uses
-        content_text = ""
-        tool_uses: list[dict[str, Any]] = []
-
-        for block in response.content:
-            block_type = getattr(block, "type", "text")
-            if block_type == "text":
-                text_val = getattr(block, "text", "")
-                if text_val is not None:
-                    content_text += str(text_val)
-            elif block_type == "tool_use":
-                tool_uses.append({
-                    "id": str(getattr(block, "id", "")),
-                    "name": str(getattr(block, "name", "")),
-                    "input": dict(getattr(block, "input", {})),
-                })
-
-        return ChatResponse(
-            content=content_text,
-            model=response.model,
-            usage={
-                "input_tokens": response.usage.input_tokens,
-                "output_tokens": response.usage.output_tokens,
-            },
-            finish_reason=response.stop_reason,
-            tool_uses=tool_uses if tool_uses else None,
-        )
+        return self._build_chat_response(response)
 
     def chat_stream(
         self,
@@ -156,6 +159,54 @@ class MinimaxProvider(BaseProvider):
         ) as stream:
             for text in stream.text_stream:
                 yield text
+
+    def chat_stream_response(
+        self,
+        messages: list[MessageInput],
+        tools: Optional[list[dict[str, Any]]] = None,
+        on_text_chunk: TextChunkCallback | None = None,
+        **kwargs
+    ) -> ChatResponse:
+        model = self._get_model(**kwargs)
+        max_tokens = kwargs.get("max_tokens", 4096)
+        system = kwargs.pop("system", None)
+        minimax_messages = self._prepare_messages(messages)
+
+        client = self._ensure_client()
+        extra_kwargs: dict[str, Any] = {}
+        if tools:
+            extra_kwargs["tools"] = tools
+
+        streamed_text = ""
+        with client.messages.stream(
+            model=model,
+            max_tokens=max_tokens,
+            messages=minimax_messages,
+            **({"system": system} if system else {}),
+            **extra_kwargs,
+            **{k: v for k, v in kwargs.items() if k not in ["model", "max_tokens", "tools"]},
+        ) as stream:
+            for text in stream.text_stream:
+                if not text:
+                    continue
+                streamed_text += text
+                if on_text_chunk is not None:
+                    on_text_chunk(text)
+            try:
+                final_message = stream.get_final_message()
+            except Exception:
+                final_message = None
+
+        if final_message is not None:
+            return self._build_chat_response(final_message)
+
+        return ChatResponse(
+            content=streamed_text,
+            model=model,
+            usage={},
+            finish_reason="stop",
+            tool_uses=None,
+        )
 
     def get_available_models(self) -> list[str]:
         """Get list of available Minimax models.

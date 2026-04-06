@@ -34,14 +34,12 @@
 
 | **Core Features Showcase** |
 |:---:|
+| ![Streaming Agent Experience](assets/clawd-stream.gif) |
+| **True Streaming Agent Experience** |
 | ![Skills (Slash Commands)](assets/clawd-code-skill.png) |
 | **Flexible Skill Systems** |
 | ![Bash Execution](assets/clawd-code-bash.png) |
 | *Real-time Tool Execution* |
-| ![Web Fetch](assets/claude-code-webfetch.png) |
-| *Instant Web Content Extraction* |
-| ![File Operations](assets/clawd-code-write-read.png) |
-| *Seamless Coding & Debugging* |
 
 **Real CLI • Real Usage • Real Community**
 
@@ -69,6 +67,21 @@
 </a>
 
 ## ✨ Features
+
+### Streaming Agent Experience
+
+```text
+>>> /stream on
+>>> Explain tests/test_agent_loop.py
+[streaming answer...]
+• Read (tests/test_agent_loop.py) running...
+  ↳ lines 1-180
+>>> /render-last
+```
+
+- True API streaming for direct replies plus richer streaming during tool-driven agent loops
+- Built-in `/stream` toggle for live output and `/render-last` for clean Markdown re-rendering on demand
+- Designed for real terminal demos: streaming text, visible tool activity, and stable fallback behavior
 
 ### Flexible Skill Systems
 
@@ -455,14 +468,12 @@ If you find this useful, please **star** ⭐ the repo!
 
 | **核心功能演示** |
 |:---:|
+| ![流式 Agent 演示](assets/clawd-stream.gif) |
+| **真实流式 Agent 体验** |
 | ![Skills（斜杠命令）](assets/clawd-code-skill.png) |
 | **Flexible Skill Systems** |
 | ![Bash 执行](assets/clawd-code-bash.png) |
 | *实时的 Bash 命令执行* |
-| ![网页获取](assets/claude-code-webfetch.png) |
-| *即时的网页内容提取* |
-| ![文件操作](assets/clawd-code-write-read.png) |
-| *无缝的文件读取与写入* |
 
 **真实的 CLI • 真实的使用 • 真实的社区**
 
@@ -490,6 +501,21 @@ If you find this useful, please **star** ⭐ the repo!
 </a>
 
 ## ✨ 特性
+
+### Streaming Agent Experience
+
+```text
+>>> /stream on
+>>> 解释 tests/test_agent_loop.py
+[流式回答中...]
+• Read (tests/test_agent_loop.py) running...
+  ↳ lines 1-180
+>>> /render-last
+```
+
+- 直接回答支持真实 API 流式输出，带工具的 agent loop 也具备更完整的流式体验
+- 内置 `/stream` 开关用于实时输出，`/render-last` 可按需把上一条回答重新渲染为 Markdown
+- 专门为终端演示优化：一边看回答流出，一边看到工具调用，并保留稳定回退路径
 
 ### Flexible Skill Systems
 

@@ -11,7 +11,7 @@ from .context import ToolContext
 from ..agent.conversation import Conversation, TextContentBlock, ToolUseContentBlock
 from ..context_system import build_context_prompt
 from ..outputStyles import resolve_output_style
-from ..providers.base import BaseProvider
+from ..providers.base import BaseProvider, ChatResponse
 from ..providers.anthropic_provider import AnthropicProvider
 from ..providers.minimax_provider import MinimaxProvider
 
@@ -109,6 +109,7 @@ class AgentLoopResult:
 
 
 ToolEventHandler = Callable[[ToolEvent], None]
+TextChunkHandler = Callable[[str], None]
 
 
 def _safe_call_handler(handler: ToolEventHandler | None, event: ToolEvent) -> None:
@@ -118,6 +119,51 @@ def _safe_call_handler(handler: ToolEventHandler | None, event: ToolEvent) -> No
         handler(event)
     except Exception:
         return
+
+
+def _emit_text_chunks(handler: TextChunkHandler | None, text: str, *, chunk_size: int = 12) -> None:
+    """Emit text in small chunks for user-visible streaming without changing loop semantics."""
+    if handler is None or not text:
+        return
+    if chunk_size <= 0:
+        chunk_size = len(text)
+    for idx in range(0, len(text), chunk_size):
+        try:
+            handler(text[idx: idx + chunk_size])
+        except Exception:
+            return
+
+
+def _call_provider_for_turn(
+    *,
+    provider: BaseProvider,
+    api_messages: list[dict[str, Any]],
+    call_kwargs: dict[str, Any],
+    stream: bool,
+    on_text_chunk: TextChunkHandler | None,
+) -> tuple[Any, bool]:
+    """Call the provider, preferring structured streaming when available.
+
+    Returns (response, streamed_live_text).
+    """
+    if stream:
+        try:
+            response = provider.chat_stream_response(
+                api_messages,
+                on_text_chunk=on_text_chunk,
+                **call_kwargs,
+            )
+            if not isinstance(response, ChatResponse):
+                raise TypeError("Structured streaming must return ChatResponse")
+            return response, True
+        except NotImplementedError:
+            pass
+        except Exception:
+            # Preserve existing stable behavior if streaming is unsupported or fails.
+            pass
+
+    response = provider.chat(api_messages, **call_kwargs)
+    return response, False
 
 
 def _build_effective_system_prompt(style_prompt: str, tool_context: ToolContext) -> str:
@@ -200,6 +246,7 @@ def run_agent_loop(
     stream: bool = False,
     verbose: bool = False,
     on_event: ToolEventHandler | None = None,
+    on_text_chunk: TextChunkHandler | None = None,
 ) -> AgentLoopResult:
     """Run agent loop: LLM -> tools -> LLM until no more tools or max turns.
 
@@ -212,6 +259,7 @@ def run_agent_loop(
         stream: Whether to stream responses
         verbose: Whether to print tool calls/results
         on_event: Optional callback for tool events
+        on_text_chunk: Optional callback for incremental user-visible text chunks
 
     Returns:
         AgentLoopResult with final text response, usage info, and turn count
@@ -252,16 +300,19 @@ def run_agent_loop(
             # Use OpenAI formatted messages for non-Anthropic
             api_messages = openai_messages
 
-        if stream:
-            raise NotImplementedError("Streaming agent loop not yet supported")
-
         call_kwargs: dict[str, Any] = {"tools": tool_schemas}
         if _is_anthropic_provider(provider):
             call_kwargs["system"] = effective_system_prompt
         else:
             if turn == 0:
                 api_messages = [{"role": "system", "content": effective_system_prompt}, *api_messages]
-        response = provider.chat(api_messages, **call_kwargs)
+        response, streamed_live_text = _call_provider_for_turn(
+            provider=provider,
+            api_messages=api_messages,
+            call_kwargs=call_kwargs,
+            stream=stream,
+            on_text_chunk=on_text_chunk,
+        )
         turn_count += 1
 
         # Collect usage info
@@ -288,6 +339,9 @@ def run_agent_loop(
 
             conversation.add_assistant_message(assistant_blocks if assistant_blocks else "")
         else:
+            # Persist assistant text for session history features like /render-last
+            # and for subsequent non-Anthropic turns seeded from conversation.
+            conversation.add_assistant_message(final_assistant_content)
             # Add assistant message to OpenAI messages (text only)
             openai_assistant_msg: dict[str, Any] = {"role": "assistant", "content": final_assistant_content}
             # If there are tool_uses, add them in OpenAI format
@@ -310,6 +364,8 @@ def run_agent_loop(
 
         if not tool_uses:
             # No more tools, done
+            if stream and final_assistant_content and not streamed_live_text:
+                _emit_text_chunks(on_text_chunk, final_assistant_content)
             if (final_assistant_content or "").strip() == "" and last_user_visible_message is not None:
                 return AgentLoopResult(
                     response_text=last_user_visible_message,

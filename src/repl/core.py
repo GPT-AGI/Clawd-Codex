@@ -70,11 +70,15 @@ from pathlib import Path
 import asyncio
 import sys
 import json
+from typing import Any
 
 from src.agent import Session
 from src.config import get_provider_config
+from src.outputStyles import resolve_output_style
 from src.providers import get_provider_class
+from src.providers.anthropic_provider import AnthropicProvider
 from src.providers.base import ChatMessage
+from src.providers.minimax_provider import MinimaxProvider
 from src.tool_system.context import ToolContext
 from src.tool_system.defaults import build_default_registry
 from src.tool_system.protocol import ToolCall
@@ -96,9 +100,10 @@ from src.history import HistoryLog
 class ClawdREPL:
     """Interactive REPL for Clawd Codex."""
 
-    def __init__(self, provider_name: str = "glm"):
+    def __init__(self, provider_name: str = "glm", stream: bool = False):
         self.console = Console()
         self.provider_name = provider_name
+        self.stream = stream
         self.multiline_mode = False
 
         # Load configuration
@@ -140,6 +145,8 @@ class ClawdREPL:
             "/save",
             "/load",
             "/multiline",
+            "/stream",
+            "/render-last",
             "/tools",
             "/tool",
             "/skills",
@@ -591,7 +598,7 @@ class ClawdREPL:
         table.add_row("Provider", Text(provider_label, style="bold green"))
         table.add_row("Workspace", Text(self._truncate_middle(display_path, content_width - 12), style="bold blue"))
 
-        footer = Text("/help  •  /tools  •  /exit", style="dim")
+        footer = Text("/help  •  /tools  •  /stream  •  /render-last  •  /exit", style="dim")
         mascot_block = Text(mascot_ascii, style="bold orange3", no_wrap=True)
         body = Group(
             Columns([mascot_block, table], align="center", expand=False),
@@ -669,7 +676,7 @@ class ClawdREPL:
             special_commands = {
                 'exit', 'quit', 'q',
                 'help', 'tools', 'tool',
-                'save', 'load', 'multiline',
+                'save', 'load', 'multiline', 'stream', 'render-last',
                 'skill',
                 'context', 'compact',  # These need special handling
                 ''
@@ -789,6 +796,32 @@ class ClawdREPL:
             self.console.print(f"[green]Multiline mode {status}.[/green]")
             if self.multiline_mode:
                 self.console.print("[dim]Press Meta+Enter or Esc+Enter to submit.[/dim]")
+
+        elif cmd == '/stream' or cmd.startswith('/stream '):
+            parts = raw.split(maxsplit=1)
+            if len(parts) == 1:
+                status = "enabled" if self.stream else "disabled"
+                self.console.print(f"[green]Stream mode {status}.[/green]")
+                return
+
+            action = parts[1].strip().lower()
+            if action in {"on", "true", "1", "enable", "enabled"}:
+                self.stream = True
+            elif action in {"off", "false", "0", "disable", "disabled"}:
+                self.stream = False
+            elif action == "toggle":
+                self.stream = not self.stream
+            else:
+                self.console.print("[red]Usage: /stream [on|off|toggle][/red]")
+                return
+
+            status = "enabled" if self.stream else "disabled"
+            self.console.print(f"[green]Stream mode {status}.[/green]")
+
+        elif cmd == '/render-last':
+            rendered = self._render_last_assistant_message()
+            if not rendered:
+                self.console.print("[yellow]No assistant response available to render.[/yellow]")
 
         elif cmd.startswith('/load'):
             parts = command.strip().split(maxsplit=1)
@@ -914,6 +947,8 @@ class ClawdREPL:
 - `/save` - Save current session
 - `/load <session-id>` - Load a previous session
 - `/multiline` - Toggle multiline input mode
+- `/stream [on|off|toggle]` - Toggle live response rendering
+- `/render-last` - Re-render the last assistant reply as Markdown
 - `/tools` - List available built-in tools
 - `/tool <name> <json>` - Run a tool directly
 - `/skills` - List all available skills
@@ -983,6 +1018,103 @@ class ClawdREPL:
                 return True
         return False
 
+    def _provider_uses_system_kwarg(self) -> bool:
+        return isinstance(self.provider, (AnthropicProvider, MinimaxProvider))
+
+    def _build_direct_stream_payload(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        style_name = getattr(self.tool_context, "output_style_name", None)
+        style_dir = getattr(self.tool_context, "output_style_dir", None)
+        style_prompt = resolve_output_style(style_name, style_dir).prompt
+
+        if self._provider_uses_system_kwarg():
+            return self.session.conversation.get_messages(), (
+                {"system": style_prompt} if style_prompt.strip() else {}
+            )
+
+        messages: list[dict[str, Any]] = []
+        for msg in self.session.conversation.messages:
+            if isinstance(msg.content, str):
+                messages.append({"role": msg.role, "content": msg.content})
+        if style_prompt.strip():
+            messages = [{"role": "system", "content": style_prompt}, *messages]
+        return messages, {}
+
+    def _should_try_direct_stream(self, user_input: str) -> bool:
+        if not self.stream:
+            return False
+        text = user_input.strip().lower()
+        if not text or text.startswith("/"):
+            return False
+        if len(text) > 240:
+            return False
+
+        code_task_markers = (
+            "/", "\\", "src/", "tests/", ".py", ".ts", ".md",
+            "file", "files", "read", "write", "edit", "modify", "change",
+            "search", "grep", "glob", "bash", "shell", "command", "run",
+            "test", "fix", "bug", "refactor", "repo", "repository",
+            "project", "workspace", "folder", "directory", "function",
+            "class", "module", "code", "implementation", "readme",
+            "pyproject", "package.json", "git", "commit", "diff", "tool",
+            "文件", "代码", "仓库", "项目", "目录", "读取", "写入", "修改",
+            "搜索", "运行", "测试", "修复", "命令", "工具", "函数", "类",
+        )
+        return not any(marker in text for marker in code_task_markers)
+
+    def _stream_direct_response(self, on_text_chunk=None) -> str | None:
+        streamed_chunks: list[str] = []
+
+        try:
+            api_messages, call_kwargs = self._build_direct_stream_payload()
+            stream_iter = self.provider.chat_stream(api_messages, tools=None, **call_kwargs)
+            for chunk in stream_iter:
+                if not chunk:
+                    continue
+                streamed_chunks.append(chunk)
+                if on_text_chunk is not None:
+                    on_text_chunk(chunk)
+        except Exception:
+            # Safe fallback: only fall back when nothing has been emitted yet.
+            if not streamed_chunks:
+                return None
+            raise
+
+        if not streamed_chunks:
+            return None
+
+        full_response = "".join(streamed_chunks)
+        self.session.conversation.add_assistant_message(full_response)
+        return full_response
+
+    def _get_last_assistant_text(self) -> str | None:
+        for message in reversed(self.session.conversation.messages):
+            if message.role != "assistant":
+                continue
+            content = message.content
+            if isinstance(content, str) and content.strip():
+                return content
+            if isinstance(content, list):
+                parts: list[str] = []
+                for block in content:
+                    block_type = getattr(block, "type", None)
+                    if block_type == "text":
+                        text = getattr(block, "text", "")
+                        if isinstance(text, str) and text:
+                            parts.append(text)
+                joined = "".join(parts).strip()
+                if joined:
+                    return joined
+        return None
+
+    def _render_last_assistant_message(self) -> bool:
+        text = self._get_last_assistant_text()
+        if not text:
+            return False
+        self.console.print("\n[bold]Last Assistant Response[/bold]")
+        self.console.print(Markdown(text))
+        self.console.print()
+        return True
+
     def chat(self, user_input: str, max_turns: int = 20):
         """Send message to LLM and display response.
 
@@ -995,6 +1127,17 @@ class ClawdREPL:
 
         try:
             self.console.print("\n[bold]Assistant[/bold]")
+
+            stream_started = False
+
+            def _stop_status_once() -> None:
+                nonlocal stream_started
+                if self._current_status is not None and not stream_started:
+                    try:
+                        self._current_status.stop()
+                    except Exception:
+                        pass
+                stream_started = True
 
             def on_event(ev: ToolEvent) -> None:
                 if ev.kind == "tool_use":
@@ -1025,8 +1168,22 @@ class ClawdREPL:
                     msg = ev.error or "Error"
                     self.console.print(f"[red]  ↳ {msg}[/red]")
 
+            def on_text_chunk(chunk: str) -> None:
+                if not chunk:
+                    return
+                _stop_status_once()
+                self.console.print(chunk, end="", markup=False, highlight=False, soft_wrap=True)
+
+            if self._should_try_direct_stream(user_input):
+                self._current_status = self.console.status("[dim]Thinking...[/dim]", spinner="dots")
+                with self._current_status:
+                    direct_response = self._stream_direct_response(on_text_chunk=on_text_chunk)
+                self._current_status = None
+                if direct_response is not None:
+                    self.console.print("\n")
+                    return
+
             # Use agent loop with tools for any provider that supports it
-            from rich.status import Status
             self._current_status = self.console.status("[dim]Thinking...[/dim]", spinner="dots")
             with self._current_status:
                 result = run_agent_loop(
@@ -1035,8 +1192,10 @@ class ClawdREPL:
                     tool_registry=self.tool_registry,
                     tool_context=self.tool_context,
                     max_turns=max_turns,
+                    stream=self.stream,
                     verbose=False,
                     on_event=on_event,
+                    on_text_chunk=on_text_chunk if self.stream else None,
                 )
             self._current_status = None
 
@@ -1053,8 +1212,12 @@ class ClawdREPL:
                     if hasattr(self, 'command_context') and self.command_context:
                         self.command_context.cost_tracker = self.cost_tracker
 
-            self.console.print(Markdown(result.response_text))
-            self.console.print("\n")
+            if self.stream and stream_started:
+                self.console.print()
+                self.console.print()
+            else:
+                self.console.print(Markdown(result.response_text))
+                self.console.print("\n")
 
         except Exception as e:
             error_str = str(e)

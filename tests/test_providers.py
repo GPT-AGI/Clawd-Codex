@@ -128,6 +128,46 @@ class TestAnthropicProvider(unittest.TestCase):
             mock_client.messages.create.call_args.kwargs["messages"], messages
         )
 
+    @patch("src.providers.anthropic_provider.anthropic.Anthropic")
+    def test_chat_stream_response_with_tool_use(self, mock_anthropic):
+        """Structured streaming returns final text and tool uses."""
+        mock_client = MagicMock()
+        mock_stream = MagicMock()
+        mock_stream.__enter__.return_value = mock_stream
+        mock_stream.__exit__.return_value = False
+        mock_stream.text_stream = iter(["Hello", " world"])
+
+        final_response = MagicMock()
+        text_block = MagicMock()
+        text_block.type = "text"
+        text_block.text = "Hello world"
+        tool_block = MagicMock()
+        tool_block.type = "tool_use"
+        tool_block.id = "toolu_1"
+        tool_block.name = "Read"
+        tool_block.input = {"file_path": "README.md"}
+        final_response.content = [text_block, tool_block]
+        final_response.model = "claude-sonnet-4-20250514"
+        final_response.usage = MagicMock(input_tokens=10, output_tokens=5)
+        final_response.stop_reason = "tool_use"
+        mock_stream.get_final_message.return_value = final_response
+
+        mock_client.messages.stream.return_value = mock_stream
+        mock_anthropic.return_value = mock_client
+
+        provider = AnthropicProvider(api_key="test_key")
+        chunks: list[str] = []
+        response = provider.chat_stream_response(
+            [ChatMessage(role="user", content="Hi")],
+            tools=[{"name": "Read", "description": "", "input_schema": {"type": "object"}}],
+            on_text_chunk=chunks.append,
+        )
+
+        self.assertEqual("".join(chunks), "Hello world")
+        self.assertEqual(response.content, "Hello world")
+        self.assertEqual(response.finish_reason, "tool_use")
+        self.assertEqual(response.tool_uses[0]["name"], "Read")
+
 
 class TestOpenAIProvider(unittest.TestCase):
     """Test OpenAI provider."""
@@ -198,6 +238,53 @@ class TestOpenAIProvider(unittest.TestCase):
         self.assertEqual(
             mock_client.chat.completions.create.call_args.kwargs["messages"], messages
         )
+
+    @patch("src.providers.openai_provider.OpenAI")
+    def test_chat_stream_response_rebuilds_tool_calls(self, mock_openai):
+        """Streaming chunks are rebuilt into a final response with tool calls."""
+        mock_client = MagicMock()
+
+        chunk1 = MagicMock()
+        chunk1.model = "gpt-4"
+        chunk1.usage = None
+        chunk1.choices = [MagicMock()]
+        chunk1.choices[0].finish_reason = None
+        chunk1.choices[0].delta.content = "Hello"
+        chunk1.choices[0].delta.reasoning_content = None
+        chunk1.choices[0].delta.tool_calls = []
+
+        tool_call_delta = MagicMock()
+        tool_call_delta.index = 0
+        tool_call_delta.id = "call_1"
+        tool_call_delta.function = MagicMock(name="function")
+        tool_call_delta.function.name = "Read"
+        tool_call_delta.function.arguments = '{"file_path":"README.md"}'
+
+        chunk2 = MagicMock()
+        chunk2.model = "gpt-4"
+        chunk2.usage = MagicMock(prompt_tokens=10, completion_tokens=5, total_tokens=15)
+        chunk2.choices = [MagicMock()]
+        chunk2.choices[0].finish_reason = "tool_calls"
+        chunk2.choices[0].delta.content = None
+        chunk2.choices[0].delta.reasoning_content = None
+        chunk2.choices[0].delta.tool_calls = [tool_call_delta]
+
+        mock_client.chat.completions.create.return_value = iter([chunk1, chunk2])
+        mock_openai.return_value = mock_client
+
+        provider = OpenAIProvider(api_key="test_key")
+        chunks: list[str] = []
+        response = provider.chat_stream_response(
+            [ChatMessage(role="user", content="Hi")],
+            tools=[{"name": "Read", "description": "", "input_schema": {"type": "object"}}],
+            on_text_chunk=chunks.append,
+        )
+
+        self.assertEqual("".join(chunks), "Hello")
+        self.assertEqual(response.content, "Hello")
+        self.assertEqual(response.finish_reason, "tool_calls")
+        self.assertEqual(response.tool_uses[0]["name"], "Read")
+        self.assertEqual(response.usage["total_tokens"], 15)
 
 
 class TestGLMProvider(unittest.TestCase):

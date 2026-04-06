@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Generator, Optional, TypeAlias
+from typing import Any, Callable, Generator, Optional, TypeAlias
 
 
 @dataclass
@@ -32,6 +32,7 @@ class ChatResponse:
 
 
 MessageInput: TypeAlias = ChatMessage | dict[str, Any]
+TextChunkCallback: TypeAlias = Callable[[str], None]
 
 
 class BaseProvider(ABC):
@@ -88,6 +89,20 @@ class BaseProvider(ABC):
             Chunks of response content
         """
         pass
+
+    def chat_stream_response(
+        self,
+        messages: list[MessageInput],
+        tools: Optional[list[dict[str, Any]]] = None,
+        on_text_chunk: TextChunkCallback | None = None,
+        **kwargs
+    ) -> ChatResponse:
+        """Stream a response while also returning the final structured ChatResponse.
+
+        Providers may override this to support tool-aware streaming. The default
+        implementation signals that rich streamed responses are unavailable.
+        """
+        raise NotImplementedError("Structured streaming is not supported by this provider")
 
     @abstractmethod
     def get_available_models(self) -> list[str]:

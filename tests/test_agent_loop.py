@@ -33,6 +33,7 @@ class TestAgentLoop(unittest.TestCase):
 
         # Mock provider
         mock_provider = MagicMock()
+        mock_provider.chat_stream_response.side_effect = NotImplementedError()
 
         # First response: tool use Write
         mock_tool_use = {
@@ -88,6 +89,7 @@ class TestAgentLoop(unittest.TestCase):
         conversation.add_user_message("Create a file hello.py with content print('hello world')")
 
         mock_provider = MagicMock()
+        mock_provider.chat_stream_response.side_effect = NotImplementedError()
 
         # First response: tool use Write
         hello_path = self.workspace / "hello.py"
@@ -130,6 +132,172 @@ class TestAgentLoop(unittest.TestCase):
         self.assertEqual(result.response_text, "File created successfully!")
         self.assertTrue(hello_path.exists())
         self.assertEqual(hello_path.read_text(), "print('hello world')")
+
+    def test_agent_loop_stream_emits_final_text_chunks(self):
+        """Streaming mode emits final response chunks without changing the result."""
+        conversation = Conversation()
+        conversation.add_user_message("Say hello")
+
+        mock_provider = MagicMock()
+        mock_provider.chat_stream_response.side_effect = NotImplementedError()
+        mock_provider.chat.return_value = ChatResponse(
+            content="Hello from Clawd!",
+            model="test-model",
+            usage={"input_tokens": 3, "output_tokens": 4},
+            finish_reason="stop",
+            tool_uses=None,
+        )
+
+        chunks: list[str] = []
+        result = run_agent_loop(
+            conversation=conversation,
+            provider=mock_provider,
+            tool_registry=self.registry,
+            tool_context=self.context,
+            stream=True,
+            verbose=False,
+            on_text_chunk=chunks.append,
+        )
+
+        self.assertEqual("".join(chunks), "Hello from Clawd!")
+        self.assertEqual(result.response_text, "Hello from Clawd!")
+        self.assertEqual(mock_provider.chat.call_count, 1)
+        self.assertEqual(len(conversation.messages), 2)
+        self.assertEqual(conversation.messages[-1].role, "assistant")
+        self.assertEqual(conversation.messages[-1].content, "Hello from Clawd!")
+
+    def test_agent_loop_stream_only_emits_final_turn_text(self):
+        """Streaming mode skips interim tool-planning text and emits the final answer only."""
+        conversation = Conversation()
+        conversation.add_user_message("Create a file hello.py with content print('hello world')")
+
+        mock_provider = MagicMock()
+        mock_provider.chat_stream_response.side_effect = NotImplementedError()
+        hello_path = self.workspace / "hello.py"
+        mock_response1 = ChatResponse(
+            content="I will create the file.",
+            model="test-model",
+            usage={"input_tokens": 10, "output_tokens": 20},
+            finish_reason="tool_use",
+            tool_uses=[{
+                "id": "toolu_123",
+                "name": "Write",
+                "input": {
+                    "file_path": str(hello_path),
+                    "content": "print('hello world')",
+                },
+            }],
+        )
+        mock_response2 = ChatResponse(
+            content="File created successfully!",
+            model="test-model",
+            usage={"input_tokens": 30, "output_tokens": 10},
+            finish_reason="stop",
+            tool_uses=None,
+        )
+        mock_provider.chat.side_effect = [mock_response1, mock_response2]
+
+        chunks: list[str] = []
+        result = run_agent_loop(
+            conversation=conversation,
+            provider=mock_provider,
+            tool_registry=self.registry,
+            tool_context=self.context,
+            stream=True,
+            verbose=False,
+            on_text_chunk=chunks.append,
+        )
+
+        self.assertEqual("".join(chunks), "File created successfully!")
+        self.assertEqual(result.response_text, "File created successfully!")
+        self.assertTrue(hello_path.exists())
+
+    def test_agent_loop_stream_uses_structured_provider_streaming_for_tool_turns(self):
+        """Structured provider streaming can emit pre-tool text and final text across turns."""
+        conversation = Conversation()
+        conversation.add_user_message("Create hello.py")
+
+        provider = MagicMock()
+        hello_path = self.workspace / "hello.py"
+
+        stream_responses = [
+            ChatResponse(
+                content="I will create the file.",
+                model="test-model",
+                usage={"input_tokens": 10, "output_tokens": 20},
+                finish_reason="tool_use",
+                tool_uses=[{
+                    "id": "toolu_123",
+                    "name": "Write",
+                    "input": {
+                        "file_path": str(hello_path),
+                        "content": "print('hello world')",
+                    },
+                }],
+            ),
+            ChatResponse(
+                content="File created successfully!",
+                model="test-model",
+                usage={"input_tokens": 30, "output_tokens": 10},
+                finish_reason="stop",
+                tool_uses=None,
+            ),
+        ]
+
+        def stream_side_effect(messages, tools=None, on_text_chunk=None, **kwargs):
+            response = stream_responses.pop(0)
+            if on_text_chunk is not None and response.content:
+                on_text_chunk(response.content)
+            return response
+
+        provider.chat_stream_response.side_effect = stream_side_effect
+        provider.chat.side_effect = AssertionError("chat() should not be used when structured streaming is available")
+
+        chunks: list[str] = []
+        result = run_agent_loop(
+            conversation=conversation,
+            provider=provider,
+            tool_registry=self.registry,
+            tool_context=self.context,
+            stream=True,
+            verbose=False,
+            on_text_chunk=chunks.append,
+        )
+
+        self.assertEqual("".join(chunks), "I will create the file.File created successfully!")
+        self.assertEqual(result.response_text, "File created successfully!")
+        self.assertEqual(provider.chat_stream_response.call_count, 2)
+        self.assertTrue(hello_path.exists())
+
+    def test_agent_loop_stream_falls_back_when_structured_streaming_is_unavailable(self):
+        """If the provider lacks structured streaming, the stable synchronous path still works."""
+        conversation = Conversation()
+        conversation.add_user_message("Say hello")
+
+        provider = MagicMock()
+        provider.chat_stream_response.side_effect = NotImplementedError()
+        provider.chat.return_value = ChatResponse(
+            content="Hello from fallback!",
+            model="test-model",
+            usage={"input_tokens": 2, "output_tokens": 3},
+            finish_reason="stop",
+            tool_uses=None,
+        )
+
+        chunks: list[str] = []
+        result = run_agent_loop(
+            conversation=conversation,
+            provider=provider,
+            tool_registry=self.registry,
+            tool_context=self.context,
+            stream=True,
+            verbose=False,
+            on_text_chunk=chunks.append,
+        )
+
+        self.assertEqual("".join(chunks), "Hello from fallback!")
+        self.assertEqual(result.response_text, "Hello from fallback!")
+        provider.chat.assert_called_once()
 
 
 if __name__ == "__main__":
