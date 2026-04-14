@@ -37,7 +37,7 @@ class Session:
             "updated_at": datetime.now().isoformat()
         }
 
-        with open(session_file, 'w') as f:
+        with open(session_file, 'w', encoding="utf-8") as f:
             json.dump(session_data, f, indent=2)
 
         self.updated_at = datetime.now().isoformat()
@@ -50,7 +50,7 @@ class Session:
         if not session_file.exists():
             return None
 
-        with open(session_file, 'r') as f:
+        with open(session_file, 'r', encoding="utf-8") as f:
             data = json.load(f)
 
         return cls(
