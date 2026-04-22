@@ -106,6 +106,20 @@ PROVIDER_INFO: dict[str, ProviderInfo] = {
             "MiniMax-M2",
         ],
     },
+    "openmythos": {
+        "label": "OpenMythos (local, looped RDT)",
+        "default_base_url": "",  # no remote endpoint; model is in-process
+        "default_model": "mythos_3b",
+        "available_models": [
+            "mythos_1b",
+            "mythos_3b",
+            "mythos_10b",
+            "mythos_50b",
+            "mythos_100b",
+            "mythos_500b",
+            "mythos_1t",
+        ],
+    },
 }
 
 
@@ -134,6 +148,10 @@ def get_provider_class(provider_name: str):
         from .minimax_provider import MinimaxProvider
 
         return MinimaxProvider
+    if provider_name == "openmythos":
+        from .openmythos_provider import OpenMythosProvider
+
+        return OpenMythosProvider
     raise ValueError(f"Unknown provider: {provider_name}")
 
 
